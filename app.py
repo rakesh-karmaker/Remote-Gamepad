@@ -7,6 +7,8 @@ from inputs import get_gamepad
 import os
 import uuid
 import socketio as socketio_client
+from controller.gamepad import apply_payload_to_gamepad
+from controller.state import current_axis_values
 
 # Optional: load variables from a .env file if present.
 # Supports selecting a specific file via ENV_FILE.
@@ -34,15 +36,9 @@ PEER_URL = os.environ.get('PEER_URL')  # e.g. http://127.0.0.1:5001
 SERVER_ID = os.environ.get('SERVER_ID') or str(uuid.uuid4())
 _peer_client = socketio_client.Client(reconnection=True, reconnection_attempts=0)
 
+# Log startup configuration
 print(f"[startup] SERVER_ID={SERVER_ID}")
 print(f"[startup] PEER_URL={PEER_URL}")
-
-current_axis_values = {
-    0: 0.0,  # Left joystick X
-    1: 0.0,  # Left joystick Y
-    2: 0.0,  # Right joystick X
-    3: 0.0,  # Right joystick Y
-}
 
 @app.route('/')
 def index():
@@ -57,29 +53,24 @@ def _poll_gamepad_loop():
             socketio.emit('gamepad_error', {'message': str(e)})
             continue
 
+        # Process each event
         for event in events:
             payload = {
-                'type': event.ev_type,
-                'code': event.code,
-                'state': event.state,
-                'origin': SERVER_ID,
+                'type': event.ev_type, # 'Key' or 'Absolute'
+                'code': event.code, # e.g. 'BTN_SOUTH', 'ABS_X'
+                'state': event.state, # e.g. 1 (pressed), 0 (released), or axis value
+                'origin': SERVER_ID, # Identify source server
             }
-            # Broadcast raw event to all clients
+            
+            # Broadcast raw event to all clients from server context
             socketio.emit('gamepad_event', payload)
-            print(f"Event: {payload}")
-
-            # Apply locally to virtual gamepad
 
             # Forward to peer server, if configured and connected
-            print(f"Peer connected: {_peer_client.connected} {PEER_URL}")
             if PEER_URL and _peer_client.connected:
                 try:
                     _peer_client.emit('gamepad_event', payload)
                 except Exception as e:
                     socketio.emit('peer_error', {'message': str(e)})
-
-        # Small sleep to prevent tight loop hogging CPU
-        # sleep(0.001)
 
 @socketio.on('connect')
 def on_connect():
@@ -106,105 +97,18 @@ def on_disconnect():
 
 @socketio.on('gamepad_event')
 def handle_gamepad_event_from_peer(payload):
-    """Receive events from any client (including peer server client) and
-    apply locally without re-forwarding to avoid echo loops."""
     try:
         origin = payload.get('origin')
         if origin == SERVER_ID:
             return  # Ignore our own events
+        
         # Rebroadcast to local browser clients
-        socketio.emit('gamepad_event', payload)
+        # socketio.emit('gamepad_event', payload)
         print(f"Peer Event: {payload}")
         # Apply to local virtual gamepad
-        # _apply_payload_to_gamepad(payload)
+        apply_payload_to_gamepad(_gamepad, payload, current_axis_values)
     except Exception as e:
         socketio.emit('gamepad_error', {'message': str(e)})
-
-# def _apply_payload_to_gamepad(payload: dict):
-#     ev_type = payload.get('type')
-#     code = payload.get('code')
-#     state = payload.get('state')
-#     if ev_type == 'Key':
-#         handle_button(_gamepad, code, state == 1)
-#     elif ev_type == 'Absolute':
-#         if code in ["ABS_X", "ABS_Y", "ABS_RX", "ABS_RY", "ABS_Z", "ABS_RZ"]:
-#             axis_map = {
-#                 "ABS_X": 0,
-#                 "ABS_Y": 1,
-#                 "ABS_RX": 2,
-#                 "ABS_RY": 3,
-#                 "ABS_Z": 4,
-#                 "ABS_RZ": 5,
-#             }
-#             axis = axis_map[code]
-#             if code in ["ABS_Z", "ABS_RZ"]:
-#                 value = (state / 255.0) * 2 - 1
-#             else:
-#                 value = state / 32767.0
-#             handle_axis(_gamepad, axis, value, current_axis_values)
-#         elif code == "ABS_HAT0X":
-#             handle_hat(_gamepad, (state, 0))
-#         elif code == "ABS_HAT0Y":
-#             handle_hat(_gamepad, (0, state * -1))
-
-
-def handle_button(gamepad, button, pressed):
-    vg_button = {
-        "BTN_SOUTH": vg.XUSB_BUTTON.XUSB_GAMEPAD_A,
-        "BTN_EAST": vg.XUSB_BUTTON.XUSB_GAMEPAD_B,
-        "BTN_WEST": vg.XUSB_BUTTON.XUSB_GAMEPAD_X,
-        "BTN_NORTH": vg.XUSB_BUTTON.XUSB_GAMEPAD_Y,
-        "BTN_TL": vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_SHOULDER,
-        "BTN_TR": vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER,
-        "BTN_START": vg.XUSB_BUTTON.XUSB_GAMEPAD_BACK,
-        "BTN_SELECT": vg.XUSB_BUTTON.XUSB_GAMEPAD_START,
-        "BTN_THUMBL": vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_THUMB,
-        "BTN_THUMBR": vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_THUMB,
-    }.get(button, None)
-
-    if vg_button is not None:
-        if pressed:
-            gamepad.press_button(vg_button)
-        else:
-            gamepad.release_button(vg_button)
-        gamepad.update()
-
-def handle_axis(gamepad, axis, value, current_axis_values):
-
-    if axis == 0:  # Left joystick X
-        gamepad.left_joystick_float(x_value_float=value, y_value_float=current_axis_values[1])
-        current_axis_values[0] = value
-    elif axis == 1:  # Left joystick Y
-        gamepad.left_joystick_float(x_value_float=current_axis_values[0], y_value_float=(value))
-        current_axis_values[1] = value
-    elif axis == 2:  # Right joystick X
-        gamepad.right_joystick_float(x_value_float=value, y_value_float=current_axis_values[3])
-        current_axis_values[2] = value
-    elif axis == 3:  # Right joystick Y
-        gamepad.right_joystick_float(x_value_float=current_axis_values[2], y_value_float=(value))
-        current_axis_values[3] = value
-    elif axis == 4:  # Left trigger
-        trigger_value = int((value + 1) / 2 * 255)  # Scale from -1.0 to 1.0 to 0 to 255
-        gamepad.left_trigger(value=trigger_value)
-    elif axis == 5:  # Right trigger
-        trigger_value = int((value + 1) / 2 * 255)  # Scale from -1.0 to 1.0 to 0 to 255
-        gamepad.right_trigger(value=trigger_value)
-
-    gamepad.update()
-
-def handle_hat(gamepad, value):
-    x, y = value
-    if x == -1:
-        gamepad.left_joystick(x_value=-32767, y_value=0)
-    if x == 1:
-        gamepad.left_joystick(x_value=32767, y_value=0)
-    if y == -1:
-        gamepad.left_joystick(x_value=0, y_value=-32767)
-    if y == 1:
-        gamepad.left_joystick(x_value=0, y_value=32767)
-    if x == 0 and y == 0:
-        gamepad.left_joystick(x_value=0, y_value=0)
-    gamepad.update()
 
 
 if __name__ == '__main__':
@@ -216,11 +120,11 @@ if __name__ == '__main__':
                 _peer_client.emit('server_hello', {'server_id': SERVER_ID})
             except Exception as e:
                 print(f"Peer connect failed at startup: {e}")
-        # socketio.run(app, debug=True)
         ## Bind to LAN so other machines can reach this server
         host = os.environ.get('HOST', '0.0.0.0')
         port = int(os.environ.get('PORT', '5000'))
         print(f"[startup] binding host={host} port={port}")
-        socketio.run(app, host=host, port=port, debug=True)
+        # Disable reloader to avoid duplicate initialization/gamepad instances
+        socketio.run(app, host=host, port=port, debug=False, use_reloader=False)
     finally:
         _stop_event.set()

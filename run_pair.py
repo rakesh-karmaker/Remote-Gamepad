@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--remote-server-ip", default="192.168.0.101", help="Server IP that client.py will send to")
     parser.add_argument("--local-port", default="5000", help="Port for local server.py")
     parser.add_argument("--remote-port", default="5000", help="Port for remote client.py to send to")
+    parser.add_argument("--no-new-console", default=True, action="store_true", help="Do not open new console windows for processes")
     args = parser.parse_args()
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -39,10 +40,10 @@ def main():
     server_cmd = [py, "server.py"]
     client_cmd = [py, "client.py"]
 
-    server_proc = start_process(server_cmd, server_env, cwd=base_dir)
+    server_proc = start_process(server_cmd, server_env, cwd=base_dir, new_console=not args.no_new_console)
     time.sleep(0.5) # Give server time to start
 
-    client_proc = start_process(client_cmd, client_env, cwd=base_dir)
+    client_proc = start_process(client_cmd, client_env, cwd=base_dir, new_console=not args.no_new_console)
 
     try:
         # Keep parent alive and let child consoles run

@@ -104,7 +104,7 @@ def handle_gamepad_event_from_peer(payload):
         
         # Rebroadcast to local browser clients
         # socketio.emit('gamepad_event', payload)
-        print(f"Peer Event: {payload}")
+        # print(f"Peer Event: {payload}")
         # Apply to local virtual gamepad
         apply_payload_to_gamepad(_gamepad, payload, current_axis_values)
     except Exception as e:

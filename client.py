@@ -9,8 +9,10 @@ from controller.state import current_axis_values
 # Load variables from .env into environment
 load_dotenv()
 
-SERVER_IP_ADDRESS = os.getenv('SERVER_IP_ADDRESS', '')
-SERVER_PORT = int(os.getenv('SERVER_PORT', '5000'))
+REMOTE_SERVER_IP = os.getenv('REMOTE_SERVER_IP', '')
+REMOTE_SERVER_PORT = int(os.getenv('REMOTE_SERVER_PORT', '5000'))
+
+print(f"Connecting to server at {REMOTE_SERVER_IP}:{REMOTE_SERVER_PORT}")
 
 # Create a UDP socket
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -23,9 +25,5 @@ while True:
     events = get_gamepad()
     for event in events:
         controller_input = f"{event.ev_type},{event.code},{event.state}"
-        client_socket.sendto(controller_input.encode(), (SERVER_IP_ADDRESS, SERVER_PORT))
+        client_socket.sendto(controller_input.encode(), (REMOTE_SERVER_IP, REMOTE_SERVER_PORT))
     
-    # Receive controllerInput from server
-    payload, server_address = client_socket.recvfrom(4096) # buffer size is 4096 bytes
-    print(f"Received payload: {payload.decode()} from {server_address}")
-    apply_payload_to_gamepad(gamepad, payload.decode(), current_axis_values)

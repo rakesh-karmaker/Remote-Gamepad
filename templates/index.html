@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Flask WebSocket</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+</head>
+
+<body>
+    <h2>WebSocket Gamepad Events</h2>
+    <ul id="messages"></ul>
+
+    <script>
+        var socket = io();
+        socket.on('gamepad_event', function (msg) {
+            var li = document.createElement("li");
+            li.textContent = msg;
+            document.getElementById("messages").appendChild(li);
+            console.log(msg);
+        });
+    </script>
+</body>
+
+</html>
